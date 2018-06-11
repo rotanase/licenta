@@ -12,6 +12,8 @@ import (
 // Block keeps block headers
 type Block struct {
 	Timestamp     int64
+	DoctorHash    []byte
+	PacientHash   []byte
 	Data          []byte
 	PrevBlockHash []byte
 	Hash          []byte
@@ -37,8 +39,9 @@ func (b *Block) SetHash() {
 	b.Hash = hash[:]
 }
 
+// TODO Doctor/Pacient Hash params
 func NewBlock(data string, prevBlockHash []byte) *Block {
-	block := &Block{time.Now().Unix(), []byte(data), prevBlockHash, []byte{}}
+	block := &Block{time.Now().Unix(), []byte("DoctorHash"), []byte("PacientHash"), []byte(data), prevBlockHash, []byte{}}
 	block.SetHash()
 
 	return block

@@ -56,10 +56,10 @@ func NewBlockchain() *Blockchain {
 				log.Println("Error at creating a bucket.")
 			}
 			err = b.Put(genesis.Hash, genesis.Serialize())
-			err = b.Put([]byte("l"), genesis.Hash)
+			err = b.Put([]byte("lastHash"), genesis.Hash)
 			tip = genesis.Hash
 		} else {
-			tip = b.Get([]byte("l"))
+			tip = b.Get([]byte("lastHash"))
 		}
 
 		return nil
@@ -83,7 +83,7 @@ func (bc *Blockchain) AddBlock(data string) {
 	// running a read DB transaction (read the last block)
 	err := bc.db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(blocksBucket))
-		lastHash = b.Get([]byte("l"))
+		lastHash = b.Get([]byte("lastHash"))
 
 		return nil
 	})
@@ -101,7 +101,7 @@ func (bc *Blockchain) AddBlock(data string) {
 		if err != nil {
 			log.Println("Error at adding a new block to database.")
 		}
-		err = b.Put([]byte("l"), newBlock.Hash)
+		err = b.Put([]byte("lastHash"), newBlock.Hash)
 		bc.tip = newBlock.Hash
 
 		return nil
