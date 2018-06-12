@@ -10,12 +10,8 @@ func main() {
 	bc := NewBlockchain()
 	defer bc.db.Close()
 
-	// cli := CLI{bc}
-	// cli.Run()
-
-	// communication := COMMUNICATION{bc}
-	err := server()
-	// err := server()
+	communication := COMMUNICATION{bc}
+	err := communication.server()
 
 	if err != nil {
 		log.Println("Error:", errors.WithStack(err))

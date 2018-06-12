@@ -34,8 +34,6 @@ type BlockchainIterator struct {
        Store in the DB.
        Save the genesis block’s hash as the last block hash.
        Create a new Blockchain instance with its tip pointing at the genesis block.
-
-
 */
 func NewBlockchain() *Blockchain {
 	// return &Blockchain{[]*Block{NewGenesisBlock()}}
@@ -71,13 +69,7 @@ func NewBlockchain() *Blockchain {
 	return &bc
 }
 
-// func (bc *Blockchain) AddBlock(data string) {
-// 	prevBlock := bc.blocks[len(bc.blocks)-1]
-// 	newBlock := NewBlock(data, prevBlock.Hash)
-// 	bc.blocks = append(bc.blocks, newBlock)
-// }
-
-func (bc *Blockchain) AddBlock(data string) {
+func (bc *Blockchain) AddBlock(data []byte, doctorHash []byte, pacientHash []byte, signature []byte) {
 	var lastHash []byte
 
 	// running a read DB transaction (read the last block)
@@ -92,7 +84,7 @@ func (bc *Blockchain) AddBlock(data string) {
 		log.Println("Error at reading from database.")
 	}
 
-	newBlock := NewBlock(data, lastHash)
+	newBlock := NewBlock(data, doctorHash, pacientHash, lastHash, signature)
 
 	// update the blockchain with the new block
 	err = bc.db.Update(func(tx *bolt.Tx) error {

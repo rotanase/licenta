@@ -15,6 +15,7 @@ type Block struct {
 	DoctorHash    []byte
 	PacientHash   []byte
 	Data          []byte
+	Signature     []byte
 	PrevBlockHash []byte
 	Hash          []byte
 }
@@ -39,16 +40,15 @@ func (b *Block) SetHash() {
 	b.Hash = hash[:]
 }
 
-// TODO Doctor/Pacient Hash params
-func NewBlock(data string, prevBlockHash []byte) *Block {
-	block := &Block{time.Now().Unix(), []byte("DoctorHash"), []byte("PacientHash"), []byte(data), prevBlockHash, []byte{}}
+func NewBlock(data []byte, doctorHash []byte, pacientHash []byte, prevBlockHash []byte, signature []byte) *Block {
+	block := &Block{time.Now().Unix(), doctorHash, pacientHash, data, signature, prevBlockHash, []byte{}}
 	block.SetHash()
 
 	return block
 }
 
 func NewGenesisBlock() *Block {
-	return NewBlock("Genesis Block", []byte{})
+	return NewBlock([]byte("Genesis Block"), nil, nil, nil, []byte{})
 }
 
 func DeserializeBlock(d []byte) *Block {

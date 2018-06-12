@@ -1,7 +1,7 @@
 package main
 
 import (
-	"bytes"
+	"bufio"
 	"encoding/gob"
 	"log"
 	"net"
@@ -14,24 +14,29 @@ type COMMUNICATION struct {
 }
 
 type transaction struct {
-	OperationType string
+	OperationType int
 	DoctorHash    []byte
 	PacientHash   []byte
-	data          []byte
+	Data          []byte
+	Signature     []byte
 }
 
 // listening port for incoming wallet requests
 const port = ":4400"
-const ADD_RECORD = "Add record"
-const GET_RECORD = "Get record"
-const GET_RECORDS = "Get records"
+const addRecord = 0
+const getRecord = 1
+const getRecords = 2
 
-func handleConnection(conn net.Conn) {
-	log.Print("Receive transaction data:")
+func (com *COMMUNICATION) handleGOB(rw *bufio.ReadWriter, conn net.Conn) {
+	defer func() {
+		log.Printf("closing connection from %v", conn.RemoteAddr())
+		conn.Close()
+	}()
+
+	log.Println("Receive transaction data from " + conn.RemoteAddr().String())
 	var incomingData transaction
-	var network bytes.Buffer
 
-	dec := gob.NewDecoder(&network)
+	dec := gob.NewDecoder(rw)
 	err := dec.Decode(&incomingData)
 	if err != nil {
 		log.Println("Error decoding transaction data:", err)
@@ -39,24 +44,46 @@ func handleConnection(conn net.Conn) {
 	}
 
 	switch {
-	case incomingData.OperationType == ADD_RECORD:
-		log.Println("Addind a record...\n")
+	case incomingData.OperationType == addRecord:
+		log.Println("Adding a record...")
+		com.bc.AddBlock(incomingData.Data, incomingData.DoctorHash, incomingData.PacientHash, incomingData.Signature)
+	case incomingData.OperationType == getRecord:
+		log.Println("Getting a record...")
 
-	case incomingData.OperationType == GET_RECORD:
-		log.Println("Getting a record...\n")
+	case incomingData.OperationType == getRecords:
+		log.Println("Getting all the records...")
+		bci := com.bc.Iterator()
+		enc := gob.NewEncoder(rw)
+		var records []transaction
 
-	case incomingData.OperationType == GET_RECORDS:
-		log.Println("Getting all the records...\n")
+		for {
+			block := bci.Next()
+			record := transaction{incomingData.OperationType, block.DoctorHash,
+				block.PacientHash, block.Data, block.Signature}
+			records = append(records, record)
+
+			if len(block.PrevBlockHash) == 0 {
+				break
+			}
+		}
+
+		err = enc.Encode(records)
+		if err != nil {
+			log.Printf("Encode failed for struct: %#v", err)
+		}
+		err = rw.Flush()
+		if err != nil {
+			log.Printf("Flush failed: %#v", err)
+		}
 	}
-	log.Printf("Incoming complexData struct, doc: \n%#v\n", incomingData.OperationType)
-	log.Printf("Incoming complexData struct, doc: \n%#v\n", string(incomingData.DoctorHash))
-	log.Printf("Incoming complexData struct, data: \n%#v\n", string(incomingData.data))
-	log.Printf("Incoming complexData struct, pacient: \n%#v\n", string(incomingData.PacientHash))
 }
 
-func server() error {
+func (com *COMMUNICATION) server() error {
 
 	listener, err := net.Listen("tcp", port)
+
+	// defer listener.Close()
+
 	if err != nil {
 		return errors.Wrapf(err, "Unable to listen on port %s\n", port)
 	}
@@ -70,6 +97,8 @@ func server() error {
 			continue
 		}
 		log.Println("Handle incoming messages.")
-		go handleConnection(conn)
+
+		rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
+		go com.handleGOB(rw, conn)
 	}
 }
