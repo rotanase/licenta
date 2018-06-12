@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/gob"
 	"log"
 	"net"
@@ -48,7 +49,34 @@ func (com *COMMUNICATION) handleGOB(rw *bufio.ReadWriter, conn net.Conn) {
 		log.Println("Adding a record...")
 		com.bc.AddBlock(incomingData.Data, incomingData.DoctorHash, incomingData.PacientHash, incomingData.Signature)
 	case incomingData.OperationType == getRecord:
-		log.Println("Getting a record...")
+		log.Println("Getting a record by hash...")
+		bci := com.bc.Iterator()
+		enc := gob.NewEncoder(rw)
+		var records []transaction
+		var record transaction
+
+		for {
+			block := bci.Next()
+			if bytes.Compare(block.PacientHash, incomingData.PacientHash) == 0 {
+				record = transaction{incomingData.OperationType, block.DoctorHash,
+					block.PacientHash, block.Data, block.Signature}
+			}
+
+			records = append(records, record)
+
+			if len(block.PrevBlockHash) == 0 {
+				break
+			}
+		}
+
+		err = enc.Encode(records)
+		if err != nil {
+			log.Printf("Encode failed for struct: %#v", err)
+		}
+		err = rw.Flush()
+		if err != nil {
+			log.Printf("Flush failed: %#v", err)
+		}
 
 	case incomingData.OperationType == getRecords:
 		log.Println("Getting all the records...")
@@ -75,6 +103,7 @@ func (com *COMMUNICATION) handleGOB(rw *bufio.ReadWriter, conn net.Conn) {
 		if err != nil {
 			log.Printf("Flush failed: %#v", err)
 		}
+		// conn.Write(byte[] (records))
 	}
 }
 
