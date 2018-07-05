@@ -7,11 +7,8 @@ import (
 )
 
 func main() {
-	bc := NewBlockchain()
-	defer bc.db.Close()
 
-	communication := COMMUNICATION{bc}
-	err := communication.server()
+	err := server()
 
 	if err != nil {
 		log.Println("Error:", errors.WithStack(err))

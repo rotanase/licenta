@@ -2,17 +2,12 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"encoding/gob"
 	"log"
 	"net"
 
 	"github.com/pkg/errors"
 )
-
-type COMMUNICATION struct {
-	bc *Blockchain
-}
 
 type transaction struct {
 	OperationType int
@@ -22,13 +17,165 @@ type transaction struct {
 	Signature     []byte
 }
 
-// listening port for incoming wallet requests
+// listening port for incoming requests
 const port = ":4400"
+const localNode = "127.0.0.1:4500"
+const remoteNode1 = "127.0.0.1:4600"
+const remoteNode2 = "127.0.0.1:4700"
+
 const addRecord = 0
 const getRecord = 1
 const getRecords = 2
 
-func (com *COMMUNICATION) handleGOB(rw *bufio.ReadWriter, conn net.Conn) {
+func handleAddRecord(data transaction) error {
+
+	nodeConn, err := net.Dial("tcp", localNode)
+	nodeConn1, err1 := net.Dial("tcp", remoteNode1)
+	nodeConn2, err2 := net.Dial("tcp", remoteNode2)
+
+	defer nodeConn.Close()
+	defer nodeConn1.Close()
+	defer nodeConn2.Close()
+
+	if err != nil {
+		log.Println("Dial problem at local node, aborting...")
+		return err
+	}
+
+	if err1 != nil {
+		log.Println("Dial problem at node 1, aborting...")
+		return err1
+	}
+
+	if err2 != nil {
+		log.Println("Dial problem at node 2, aborting...")
+		return err2
+	}
+
+	rw := bufio.NewReadWriter(bufio.NewReader(nodeConn), bufio.NewWriter(nodeConn))
+	enc := gob.NewEncoder(rw)
+	err = enc.Encode(data)
+
+	rw1 := bufio.NewReadWriter(bufio.NewReader(nodeConn1), bufio.NewWriter(nodeConn1))
+	enc1 := gob.NewEncoder(rw1)
+	err1 = enc1.Encode(data)
+
+	rw2 := bufio.NewReadWriter(bufio.NewReader(nodeConn2), bufio.NewWriter(nodeConn2))
+	enc2 := gob.NewEncoder(rw2)
+	err2 = enc2.Encode(data)
+
+	if err != nil {
+		log.Println("Failed to encode the gob")
+		return err
+	}
+
+	if err1 != nil {
+		log.Println("Failed to encode the gob")
+		return err1
+	}
+
+	if err2 != nil {
+		log.Println("Failed to encode the gob")
+		return err2
+	}
+
+	err = rw.Flush()
+	err1 = rw1.Flush()
+	err2 = rw2.Flush()
+
+	if err != nil {
+		log.Println("Failed to flush (send) to the local node")
+		return err
+	}
+
+	if err1 != nil {
+		log.Println("Failed to flush (send) to the first remote node")
+		return err1
+	}
+
+	if err2 != nil {
+		log.Println("Failed to flush (send) to the second remote node")
+		return err2
+	}
+
+	log.Println("Sended the data to all nodes")
+
+	return nil
+}
+
+func handleGetRecord(data transaction) transaction {
+
+	nodeConn, err := net.Dial("tcp", localNode)
+
+	defer nodeConn.Close()
+
+	if err != nil {
+		log.Println("Dial problem, aborting...")
+		return transaction{}
+	}
+
+	rw := bufio.NewReadWriter(bufio.NewReader(nodeConn), bufio.NewWriter(nodeConn))
+	enc := gob.NewEncoder(rw)
+	err = enc.Encode(data)
+
+	if err != nil {
+		log.Println("Failed to encode the gob")
+		return transaction{}
+	}
+
+	err = rw.Flush()
+
+	if err != nil {
+		log.Println("Failed to flush (send)")
+		return transaction{}
+	}
+
+	var receive transaction
+
+	dec := gob.NewDecoder(rw)
+	err = dec.Decode(&receive)
+
+	log.Println("Received the data from the local node")
+	return receive
+}
+
+func handleGetRecords(data transaction) []transaction {
+
+	nodeConn, err := net.Dial("tcp", localNode)
+
+	defer nodeConn.Close()
+
+	if err != nil {
+		log.Println("Dial problem, aborting...")
+		return []transaction{}
+	}
+
+	rw := bufio.NewReadWriter(bufio.NewReader(nodeConn), bufio.NewWriter(nodeConn))
+	enc := gob.NewEncoder(rw)
+	err = enc.Encode(data)
+
+	if err != nil {
+		log.Println("Failed to encode the gob")
+		return []transaction{}
+	}
+
+	err = rw.Flush()
+
+	if err != nil {
+		log.Println("Failed to flush (send)")
+		return []transaction{}
+	}
+
+	var receive []transaction
+
+	dec := gob.NewDecoder(rw)
+	err = dec.Decode(&receive)
+
+	log.Println("Received the data from the local node")
+	return receive
+}
+
+func handleGOB(rw *bufio.ReadWriter, conn net.Conn) {
 	defer func() {
 		log.Printf("closing connection from %v", conn.RemoteAddr())
 		conn.Close()
@@ -46,30 +193,16 @@ func (com *COMMUNICATION) handleGOB(rw *bufio.ReadWriter, conn net.Conn) {
 
 	switch {
 	case incomingData.OperationType == addRecord:
-		log.Println("Adding a record...")
-		com.bc.AddBlock(incomingData.Data, incomingData.DoctorHash, incomingData.PacientHash, incomingData.Signature)
+		log.Println("All the nodes will add this record.")
+
+		err = handleAddRecord(incomingData)
+
 	case incomingData.OperationType == getRecord:
-		log.Println("Getting a record by hash...")
-		bci := com.bc.Iterator()
+		log.Println("The local node will return the record, based on the given hash.")
+		res := handleGetRecord(incomingData)
+
 		enc := gob.NewEncoder(rw)
-		var records []transaction
-		var record transaction
-
-		for {
-			block := bci.Next()
-			if bytes.Compare(block.PacientHash, incomingData.PacientHash) == 0 {
-				record = transaction{incomingData.OperationType, block.DoctorHash,
-					block.PacientHash, block.Data, block.Signature}
-			}
-
-			records = append(records, record)
-
-			if len(block.PrevBlockHash) == 0 {
-				break
-			}
-		}
-
-		err = enc.Encode(records)
+		err = enc.Encode(res)
 		if err != nil {
 			log.Printf("Encode failed for struct: %#v", err)
 		}
@@ -79,23 +212,12 @@ func (com *COMMUNICATION) handleGOB(rw *bufio.ReadWriter, conn net.Conn) {
 		}
 
 	case incomingData.OperationType == getRecords:
-		log.Println("Getting all the records...")
-		bci := com.bc.Iterator()
+		log.Println("The local node will return all the records.")
+
+		res := handleGetRecords(incomingData)
+
 		enc := gob.NewEncoder(rw)
-		var records []transaction
-
-		for {
-			block := bci.Next()
-			record := transaction{incomingData.OperationType, block.DoctorHash,
-				block.PacientHash, block.Data, block.Signature}
-			records = append(records, record)
-
-			if len(block.PrevBlockHash) == 0 {
-				break
-			}
-		}
-
-		err = enc.Encode(records)
+		err = enc.Encode(res)
 		if err != nil {
 			log.Printf("Encode failed for struct: %#v", err)
 		}
@@ -103,11 +225,10 @@ func (com *COMMUNICATION) handleGOB(rw *bufio.ReadWriter, conn net.Conn) {
 		if err != nil {
 			log.Printf("Flush failed: %#v", err)
 		}
-		// conn.Write(byte[] (records))
 	}
 }
 
-func (com *COMMUNICATION) server() error {
+func server() error {
 
 	listener, err := net.Listen("tcp", port)
 
@@ -128,6 +249,6 @@ func (com *COMMUNICATION) server() error {
 		log.Println("Handle incoming messages.")
 
 		rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
-		go com.handleGOB(rw, conn)
+		go handleGOB(rw, conn)
 	}
 }
